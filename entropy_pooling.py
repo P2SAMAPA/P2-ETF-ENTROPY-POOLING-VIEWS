@@ -75,11 +75,10 @@ def entropy_pooling(p_prior, scenarios, view_matrices, view_targets, confidence=
 def compute_pooled_scores(returns, engine_views=None, confidence=0.7, n_scenarios=500):
     """
     Generate prior from returns, then incorporate views.
-    Returns a tuple (score_dict, None) for compatibility with train.py that expects two values.
+    Returns a dictionary of posterior expected returns.
     """
     if returns.shape[1] == 0 or returns.shape[0] < 2:
-        scores = {ticker: 0.0 for ticker in returns.columns}
-        return scores, None
+        return {ticker: 0.0 for ticker in returns.columns}
     K = returns.shape[1]
     scenarios, p_prior = prior_from_returns(returns, n_scenarios)
     
@@ -103,4 +102,4 @@ def compute_pooled_scores(returns, engine_views=None, confidence=0.7, n_scenario
     mu_post, _ = entropy_pooling(p_prior, scenarios, view_matrices, view_targets, confidence)
     # Ensure all values are floats, replace NaN with 0.0
     scores = {ticker: float(mu_post[i]) if not np.isnan(mu_post[i]) else 0.0 for i, ticker in enumerate(returns.columns)}
-    return scores, None
+    return scores   # <-- returns a dict, NOT a tuple
