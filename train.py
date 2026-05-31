@@ -9,7 +9,9 @@ import data_manager as dm
 from entropy_pooling import compute_pooled_scores
 
 def normalize_scores(score_dict):
-    scores = np.array(list(score_dict.values()))
+    # Replace None with 0.0
+    scores = [float(v) if v is not None else 0.0 for v in score_dict.values()]
+    scores = np.array(scores)
     min_s, max_s = scores.min(), scores.max()
     if max_s - min_s < 1e-12:
         return {k: 0.0 for k in score_dict}
@@ -21,8 +23,9 @@ def run_for_window(returns, window_days):
         return None
     ret_window = returns.iloc[-window_days:]
     try:
-        # Use simple momentum view (can be replaced with any engine's output)
         raw_scores = compute_pooled_scores(ret_window, confidence=config.VIEW_CONFIDENCE, n_scenarios=config.NUM_SCENARIOS)
+        # Ensure no None values
+        raw_scores = {k: float(v) if v is not None else 0.0 for k, v in raw_scores.items()}
     except Exception as e:
         print(f"    Error: {e}")
         return None
