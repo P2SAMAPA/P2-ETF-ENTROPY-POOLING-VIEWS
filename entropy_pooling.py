@@ -7,32 +7,28 @@ def prior_from_returns(returns, n_scenarios=500):
     Generate prior scenarios (N x K matrix) and equal probabilities.
     Uses kernel density estimation to simulate from empirical distribution.
     """
-    # Convert returns to returns matrix (T x K)
     rets = returns.values
     if len(rets) < n_scenarios:
         n_scenarios = len(rets)
-    # Use bootstrap (simpler, faster) – random samples with replacement
+    # Use bootstrap – random samples with replacement
     idx = np.random.choice(len(rets), n_scenarios, replace=True)
     scenarios = rets[idx]  # shape (n_scenarios, K)
     p_prior = np.ones(n_scenarios) / n_scenarios
     return scenarios, p_prior
 
-def entropy_pooling(p_prior, scenarios, view_matrices, view_targets, confidence=0.7):
+def entropy_pooling(p_prior, scenarios, view_matrices, view_targets, confidence=0.7, eps=1e-12):
     """
     Minimum relative entropy: find p that minimizes KL(p || p_prior)
     subject to sum(p) = 1, p >= 0, and view constraints: V * (scenarios' * p) = targets.
-    view_matrices: list of (N_v x K) matrices for each view? Actually we handle linear constraints:
-        A_eq @ (scenarios.T @ p) = b_eq, where A_eq is view matrix, b_eq is target.
-    For each view: expected value of linear combination = target.
     """
     n_scenarios = len(p_prior)
     n_assets = scenarios.shape[1]
-    # Build equality constraints: V * (scenarios^T p) = v_target
-    # Let mu = scenarios^T p  (expected returns under p)
-    # For each view: V_i @ mu = target_i
-    # Expand: V_i @ (scenarios^T p) = target_i
-    # => (V_i @ scenarios^T) p = target_i
-    # So A_eq = [V_i @ scenarios^T] stacked, b_eq = target_i
+    
+    # Add small epsilon to prior probabilities to avoid zeros
+    p_prior = p_prior + eps
+    p_prior = p_prior / np.sum(p_prior)
+    
+    # Build equality constraints: A_eq @ p = b_eq
     A_eq_list = []
     b_eq_list = []
     for V, target in zip(view_matrices, view_targets):
@@ -55,19 +51,23 @@ def entropy_pooling(p_prior, scenarios, view_matrices, view_targets, confidence=
     else:
         A_eq = A_sum
         b_eq = b_sum
+    
     # Objective: KL divergence = sum p_i log(p_i / p_prior_i)
-    # Use CVXOPT or scipy.optimize.minimize with bounds and constraints
     def objective(p):
-        p = np.maximum(p, 1e-12)
+        p = np.maximum(p, eps)
         return np.sum(p * np.log(p / p_prior))
+    
     def jac(p):
+        p = np.maximum(p, eps)
         return 1 + np.log(p / p_prior)
-    # Constraints: p >= 0, sum(p)=1, A_eq p = b_eq
+    
+    # Constraints: p >= 0, A_eq p = b_eq
     constraints = [{'type': 'eq', 'fun': lambda p: A_eq @ p - b_eq}]
-    bounds = [(0, None)] * n_scenarios
+    bounds = [(eps, None)] * n_scenarios
+    
     # Initial guess: prior
     p0 = p_prior.copy()
-    # Reduce tolerance for speed
+    
     res = minimize(objective, p0, jac=jac, method='SLSQP', bounds=bounds, constraints=constraints,
                    options={'ftol': 1e-6, 'maxiter': 1000})
     if res.success:
@@ -75,6 +75,7 @@ def entropy_pooling(p_prior, scenarios, view_matrices, view_targets, confidence=
     else:
         # fallback: prior
         p_post = p_prior
+    
     # Posterior expected returns
     mu_post = scenarios.T @ p_post
     return mu_post, p_post
