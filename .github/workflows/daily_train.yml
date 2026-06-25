@@ -2,7 +2,7 @@ name: Daily Entropy Pooling Training
 
 on:
   schedule:
-    - cron: '30 03 * * *'
+    - cron: '30 00 * * *'
   workflow_dispatch:
 
 jobs:
